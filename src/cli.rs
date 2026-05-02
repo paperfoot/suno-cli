@@ -322,9 +322,13 @@ pub struct StemsArgs {
 
 #[derive(clap::Args)]
 pub struct ListArgs {
-    /// Page number (0-indexed)
-    #[arg(short, long, default_value = "0")]
+    /// Page number (0-indexed). Each page holds 20 clips.
+    #[arg(short, long, default_value = "0", conflicts_with = "all")]
     pub page: u32,
+
+    /// Fetch every page and concatenate the results.
+    #[arg(short, long)]
+    pub all: bool,
 }
 
 #[derive(clap::Args)]
