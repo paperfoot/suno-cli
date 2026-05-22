@@ -197,6 +197,9 @@ async fn run() -> Result<(), CliError> {
             } else if let Some(jwt) = args.jwt.clone() {
                 // Legacy: direct JWT paste (expires in ~1 hour)
                 state.jwt = Some(jwt);
+                state.session_id = None;
+                state.cookie = None;
+                state.clerk_client_cookie = None;
                 if state.device_id.is_none() {
                     state.device_id = Some(uuid::Uuid::new_v4().to_string());
                 }
