@@ -223,6 +223,16 @@ fn response_excerpt(body: &str) -> String {
     }
 }
 
+fn parse_json_value(body: &str, context: &'static str) -> Result<serde_json::Value, CliError> {
+    serde_json::from_str(body).map_err(|e| CliError::Api {
+        code: "clerk_json_error",
+        message: format!(
+            "{context} returned unexpected JSON/body ({e}): {}",
+            response_excerpt(body)
+        ),
+    })
+}
+
 /// Generate the dynamic browser-token header value.
 pub fn browser_token() -> String {
     let ms = SystemTime::now()
@@ -322,7 +332,8 @@ pub async fn clerk_token_exchange(
         });
     }
 
-    let body: serde_json::Value = resp.json().await.map_err(CliError::Http)?;
+    let raw = resp.text().await.map_err(CliError::Http)?;
+    let body = parse_json_value(&raw, "Clerk session lookup")?;
     let session_id = body
         .get("response")
         .and_then(|r| {
@@ -372,7 +383,8 @@ pub async fn clerk_refresh_jwt(
         });
     }
 
-    let body: serde_json::Value = resp.json().await.map_err(CliError::Http)?;
+    let raw = resp.text().await.map_err(CliError::Http)?;
+    let body = parse_json_value(&raw, "Clerk JWT refresh")?;
     body.get("jwt")
         .and_then(|j| j.as_str())
         .map(String::from)

@@ -2,24 +2,35 @@ use serde::{Deserialize, Serialize};
 
 // --- Billing / Account ---
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 pub struct BillingInfo {
+    #[serde(default)]
     pub credits: u64,
+    #[serde(default)]
     pub total_credits_left: u64,
+    #[serde(default)]
     pub monthly_usage: u64,
+    #[serde(default)]
     pub monthly_limit: u64,
+    #[serde(default)]
     pub is_active: bool,
+    #[serde(default)]
     pub plan: Plan,
+    #[serde(default)]
     pub models: Vec<Model>,
+    #[serde(default)]
     pub period: String,
+    #[serde(default)]
     pub renews_on: Option<String>,
     #[serde(default)]
     pub remaster_model_types: Vec<RemasterModelInfo>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 pub struct Plan {
+    #[serde(default)]
     pub name: String,
+    #[serde(default)]
     pub plan_key: String,
     #[serde(default)]
     pub usage_plan_features: Vec<Feature>,
@@ -30,12 +41,17 @@ pub struct Feature {
     pub name: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 pub struct Model {
+    #[serde(default)]
     pub name: String,
+    #[serde(default)]
     pub external_key: String,
+    #[serde(default)]
     pub can_use: bool,
+    #[serde(default)]
     pub is_default_model: bool,
+    #[serde(default)]
     pub description: String,
     #[serde(default)]
     pub max_lengths: MaxLengths,
