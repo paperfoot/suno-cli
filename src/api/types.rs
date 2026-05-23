@@ -106,10 +106,8 @@ pub struct ClipMetadata {
 pub struct FeedResponse {
     #[serde(default)]
     pub clips: Vec<Clip>,
-    #[allow(dead_code)]
     pub next_cursor: Option<String>,
     #[serde(default)]
-    #[allow(dead_code)]
     pub has_more: bool,
 }
 
@@ -117,6 +115,8 @@ pub struct FeedResponse {
 
 #[derive(Debug, Serialize)]
 pub struct FeedV3Request {
+    /// Opaque cursor (the UUID of the last clip from the previous page).
+    /// Pass `None` for the first page.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -3,14 +3,11 @@ use super::types::{FeedFilters, FeedResponse, FeedV3Request};
 use crate::errors::CliError;
 
 impl SunoClient {
-    /// List songs using feed/v3 with optional search and filters.
-    pub async fn feed(&self, page: u32) -> Result<FeedResponse, CliError> {
+    /// List songs using feed/v3. `cursor` is the UUID of the last clip from the
+    /// previous page (use `None` for the first page).
+    pub async fn feed(&self, cursor: Option<String>) -> Result<FeedResponse, CliError> {
         let req = FeedV3Request {
-            cursor: if page > 0 {
-                Some(page.to_string())
-            } else {
-                None
-            },
+            cursor,
             limit: Some(20),
             filters: None,
         };

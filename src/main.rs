@@ -242,10 +242,48 @@ async fn run() -> Result<(), CliError> {
         }
 
         Commands::List(args) => {
-            let feed = client().await?.feed(args.page).await?;
+            let c = client().await?;
+            // Suno paginates with an opaque cursor (the last clip's UUID); we
+            // walk pages 0..=N for `--page N`, or until exhaustion for `--all`.
+            let mut cursor: Option<String> = None;
+            let mut clips = Vec::new();
+            let mut current_page = 0u32;
+            let mut overshot = false;
+            loop {
+                let resp = c.feed(cursor.take()).await?;
+                let has_more = resp.has_more && resp.next_cursor.is_some();
+
+                if args.all {
+                    clips.extend(resp.clips);
+                } else if current_page == args.page {
+                    clips = resp.clips;
+                    break;
+                }
+
+                if !has_more {
+                    overshot = !args.all && current_page < args.page;
+                    break;
+                }
+                cursor = resp.next_cursor;
+                current_page += 1;
+            }
+
             match fmt {
-                OutputFormat::Json => output::json::success(&feed.clips),
-                OutputFormat::Table => output::table::clips(&feed.clips),
+                OutputFormat::Json => output::json::success(&clips),
+                OutputFormat::Table => {
+                    if overshot {
+                        eprintln!(
+                            "No page {} — only {} page(s) available. Try --page {} or --all.",
+                            args.page,
+                            current_page + 1,
+                            current_page
+                        );
+                    } else if clips.is_empty() {
+                        eprintln!("No clips found.");
+                    } else {
+                        output::table::clips(&clips);
+                    }
+                }
             }
         }
 
