@@ -243,6 +243,10 @@ pub struct ExtendArgs {
     #[arg(long)]
     pub tags: Option<String>,
 
+    /// Title for the new clip (defaults to the source clip's title)
+    #[arg(long)]
+    pub title: Option<String>,
+
     /// Wait for completion
     #[arg(short, long)]
     pub wait: bool,
@@ -267,6 +271,10 @@ pub struct CoverArgs {
     #[arg(long)]
     pub tags: Option<String>,
 
+    /// Title for the cover (defaults to the source clip's title)
+    #[arg(long)]
+    pub title: Option<String>,
+
     /// Model version for the cover
     #[arg(short, long, default_value = "v5.5")]
     pub model: ModelVersion,
@@ -288,6 +296,10 @@ pub struct RemasterArgs {
     /// Remaster model version
     #[arg(long, default_value = "v5.5")]
     pub model: RemasterModel,
+
+    /// Title for the remaster (defaults to the source clip's title)
+    #[arg(long)]
+    pub title: Option<String>,
 
     /// Wait for completion
     #[arg(short, long)]
