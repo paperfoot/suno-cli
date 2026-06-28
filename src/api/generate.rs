@@ -19,6 +19,33 @@ impl SunoClient {
         .await
     }
 
+    /// Resolve the title for a clip-derived generation (cover/remaster/extend).
+    /// Prefers an explicit override, then the source clip's own title, then a
+    /// generic fallback. `/api/generate/v2-web/` requires `params.title` to be a
+    /// non-null string, so this never returns an empty value.
+    pub async fn resolve_title(
+        &self,
+        clip_id: &str,
+        override_title: Option<&str>,
+        fallback: &str,
+    ) -> String {
+        if let Some(t) = override_title {
+            let t = t.trim();
+            if !t.is_empty() {
+                return t.to_string();
+            }
+        }
+        if let Ok(clips) = self.get_clips(&[clip_id.to_string()]).await
+            && let Some(c) = clips.into_iter().next()
+        {
+            let t = c.title.trim();
+            if !t.is_empty() {
+                return t.to_string();
+            }
+        }
+        fallback.to_string()
+    }
+
     /// Poll clip status by IDs until all are complete or errored.
     /// "streaming" means still generating — we wait for "complete".
     pub async fn poll_clips(

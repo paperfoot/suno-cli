@@ -14,10 +14,15 @@ impl SunoClient {
         clip_id: &str,
         model_key: &str,
         tags: Option<&str>,
+        title: Option<&str>,
     ) -> Result<Vec<Clip>, CliError> {
         let mut req = GenerateRequest::new(model_key, "cover");
         req.tags = tags.map(String::from);
         req.cover_clip_id = Some(clip_id.to_string());
+        // v2-web rejects a null `params.title` with HTTP 422, so it must always
+        // be a string. Use the caller's title, else inherit the source clip's
+        // title (matching the web app), else a generic fallback.
+        req.title = Some(self.resolve_title(clip_id, title, "Cover").await);
         self.generate(&req).await
     }
 }

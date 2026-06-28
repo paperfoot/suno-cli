@@ -375,13 +375,18 @@ async fn run() -> Result<(), CliError> {
         }
 
         Commands::Extend(args) => {
+            let c = client().await?;
             let mut req = GenerateRequest::new("chirp-fenix", "custom");
             req.prompt = args.lyrics.unwrap_or_default();
             req.tags = args.tags;
+            // v2-web requires a non-null `params.title`.
+            req.title = Some(
+                c.resolve_title(&args.clip_id, args.title.as_deref(), "Extend")
+                    .await,
+            );
             req.continue_clip_id = Some(args.clip_id);
             req.continue_at = Some(args.at);
 
-            let c = client().await?;
             let clips = c.generate(&req).await?;
             handle_generation(&c, clips, args.wait, None, &fmt, cli.quiet).await?;
         }
@@ -400,7 +405,12 @@ async fn run() -> Result<(), CliError> {
             }
             let c = client().await?;
             let clips = c
-                .cover(&args.clip_id, args.model.to_api_key(), args.tags.as_deref())
+                .cover(
+                    &args.clip_id,
+                    args.model.to_api_key(),
+                    args.tags.as_deref(),
+                    args.title.as_deref(),
+                )
                 .await?;
             handle_generation(
                 &c,
@@ -418,7 +428,9 @@ async fn run() -> Result<(), CliError> {
                 eprintln!("Remastering with {}...", args.model.to_api_key());
             }
             let c = client().await?;
-            let clips = c.remaster(&args.clip_id, args.model.to_api_key()).await?;
+            let clips = c
+                .remaster(&args.clip_id, args.model.to_api_key(), args.title.as_deref())
+                .await?;
             handle_generation(
                 &c,
                 clips,
