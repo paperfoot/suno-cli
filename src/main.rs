@@ -345,6 +345,7 @@ async fn run() -> Result<(), CliError> {
             // text is sent in the same `prompt` field as custom mode.
             let mut req = GenerateRequest::new(args.model.to_api_key(), "inspiration");
             req.prompt = args.prompt;
+            req.title = args.title;
             req.tags = tags;
             req.make_instrumental = args.instrumental;
             req.persona_id = args.persona.clone();
