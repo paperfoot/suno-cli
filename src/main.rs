@@ -221,7 +221,8 @@ async fn run() -> Result<(), CliError> {
             }
             eprintln!(
                 "Authenticated! Plan: {}, Credits: {}",
-                info.plan.name, info.total_credits_left
+                info.plan_name(),
+                info.total_credits_left
             );
         }
 
@@ -609,7 +610,8 @@ async fn run() -> Result<(), CliError> {
                             let info = client.billing_info().await?;
                             eprintln!(
                                 "Auth: OK — {}, {} credits",
-                                info.plan.name, info.total_credits_left
+                                info.plan_name(),
+                                info.total_credits_left
                             );
                         }
                         Err(CliError::AuthExpired) => {
