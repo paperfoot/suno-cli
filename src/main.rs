@@ -221,7 +221,8 @@ async fn run() -> Result<(), CliError> {
             }
             eprintln!(
                 "Authenticated! Plan: {}, Credits: {}",
-                info.plan.name, info.total_credits_left
+                info.plan_name(),
+                info.total_credits_left
             );
         }
 
@@ -344,6 +345,7 @@ async fn run() -> Result<(), CliError> {
             // text is sent in the same `prompt` field as custom mode.
             let mut req = GenerateRequest::new(args.model.to_api_key(), "inspiration");
             req.prompt = args.prompt;
+            req.title = args.title;
             req.tags = tags;
             req.make_instrumental = args.instrumental;
             req.persona_id = args.persona.clone();
@@ -609,7 +611,8 @@ async fn run() -> Result<(), CliError> {
                             let info = client.billing_info().await?;
                             eprintln!(
                                 "Auth: OK — {}, {} credits",
-                                info.plan.name, info.total_credits_left
+                                info.plan_name(),
+                                info.total_credits_left
                             );
                         }
                         Err(CliError::AuthExpired) => {
