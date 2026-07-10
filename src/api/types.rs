@@ -9,20 +9,66 @@ pub struct BillingInfo {
     pub monthly_usage: u64,
     pub monthly_limit: u64,
     pub is_active: bool,
-    pub plan: Plan,
+    #[serde(default)]
+    pub is_past_due: bool,
+    /// Suno no longer nests the active plan under a `plan` key. Instead
+    /// `subscription_type` is `false` on the free tier or the plan's
+    /// `plan_key` string (e.g. `"pro"`) when subscribed, and the full catalog
+    /// of plans (with pricing/features) is listed separately in `plans`.
+    #[serde(default)]
+    pub subscription_type: SubscriptionType,
     pub models: Vec<Model>,
-    pub period: String,
-    pub renews_on: Option<String>,
+    #[serde(default)]
+    pub plans: Vec<PlanOption>,
+    #[serde(default)]
+    pub accessible_features: Vec<Feature>,
     #[serde(default)]
     pub remaster_model_types: Vec<RemasterModelInfo>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct Plan {
-    pub name: String,
+#[serde(untagged)]
+pub enum SubscriptionType {
+    /// No active paid subscription (free tier).
+    None(bool),
+    /// Active plan, identified by its `plan_key` (e.g. "pro").
+    Plan(String),
+}
+
+impl Default for SubscriptionType {
+    fn default() -> Self {
+        SubscriptionType::None(false)
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct PlanOption {
     pub plan_key: String,
+    pub name: String,
     #[serde(default)]
     pub usage_plan_features: Vec<Feature>,
+}
+
+impl BillingInfo {
+    /// Human-readable name of the account's current plan, resolved from
+    /// `subscription_type` against the `plans` catalog (falls back to the
+    /// raw plan key, or "Free" when there's no active subscription).
+    pub fn plan_name(&self) -> String {
+        match &self.subscription_type {
+            SubscriptionType::Plan(key) => self
+                .plans
+                .iter()
+                .find(|p| &p.plan_key == key)
+                .map(|p| p.name.clone())
+                .unwrap_or_else(|| key.clone()),
+            SubscriptionType::None(_) => self
+                .plans
+                .iter()
+                .find(|p| p.plan_key == "free")
+                .map(|p| p.name.clone())
+                .unwrap_or_else(|| "Free".to_string()),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
