@@ -2,13 +2,11 @@ use serde::{Deserialize, Serialize};
 
 // --- Billing / Account ---
 
-/// Only `total_credits_left` and `plan` are load-bearing (auth verify,
-/// credits display). Everything else defaults so one renamed/removed field
-/// in Suno's billing response doesn't break credits+models+auth at once.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct BillingInfo {
     #[serde(default)]
     pub credits: u64,
+    #[serde(default)]
     pub total_credits_left: u64,
     #[serde(default)]
     pub monthly_usage: u64,
@@ -16,24 +14,67 @@ pub struct BillingInfo {
     pub monthly_limit: u64,
     #[serde(default)]
     pub is_active: bool,
-    pub plan: Plan,
+    #[serde(default)]
+    pub is_past_due: bool,
+    /// Suno no longer nests the active plan under a `plan` key. Instead
+    /// `subscription_type` is `false` on the free tier or the plan's
+    /// `plan_key` string (e.g. `"pro"`) when subscribed, and the full catalog
+    /// of plans (with pricing/features) is listed separately in `plans`.
+    #[serde(default)]
+    pub subscription_type: SubscriptionType,
     #[serde(default)]
     pub models: Vec<Model>,
     #[serde(default)]
-    pub period: String,
+    pub plans: Vec<PlanOption>,
     #[serde(default)]
-    pub renews_on: Option<String>,
+    pub accessible_features: Vec<Feature>,
     #[serde(default)]
     pub remaster_model_types: Vec<RemasterModelInfo>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct Plan {
+#[serde(untagged)]
+pub enum SubscriptionType {
+    /// No active paid subscription (free tier).
+    None(bool),
+    /// Active plan, identified by its `plan_key` (e.g. "pro").
+    Plan(String),
+}
+
+impl Default for SubscriptionType {
+    fn default() -> Self {
+        SubscriptionType::None(false)
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct PlanOption {
+    pub plan_key: String,
     pub name: String,
     #[serde(default)]
-    pub plan_key: String,
-    #[serde(default)]
     pub usage_plan_features: Vec<Feature>,
+}
+
+impl BillingInfo {
+    /// Human-readable name of the account's current plan, resolved from
+    /// `subscription_type` against the `plans` catalog (falls back to the
+    /// raw plan key, or "Free" when there's no active subscription).
+    pub fn plan_name(&self) -> String {
+        match &self.subscription_type {
+            SubscriptionType::Plan(key) => self
+                .plans
+                .iter()
+                .find(|p| &p.plan_key == key)
+                .map(|p| p.name.clone())
+                .unwrap_or_else(|| key.clone()),
+            SubscriptionType::None(_) => self
+                .plans
+                .iter()
+                .find(|p| p.plan_key == "free")
+                .map(|p| p.name.clone())
+                .unwrap_or_else(|| "Free".to_string()),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -468,12 +509,12 @@ mod tests {
 
     #[test]
     fn billing_info_tolerates_missing_noncritical_fields() {
-        // Only total_credits_left and plan are required.
-        let r: BillingInfo =
-            serde_json::from_str(r#"{"total_credits_left": 500, "plan": {"name": "Premier"}}"#)
-                .unwrap();
+        let r: BillingInfo = serde_json::from_str(
+            r#"{"total_credits_left":500,"subscription_type":"premier","plans":[{"plan_key":"premier","name":"Premier"}]}"#,
+        )
+        .unwrap();
         assert_eq!(r.total_credits_left, 500);
-        assert_eq!(r.plan.name, "Premier");
+        assert_eq!(r.plan_name(), "Premier");
         assert!(r.models.is_empty());
     }
 }
