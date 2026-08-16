@@ -378,12 +378,13 @@ async fn run(cli: Cli, fmt: OutputFormat) -> Result<(), CliError> {
             match fmt {
                 OutputFormat::Json => output::json::success(serde_json::json!({
                     "authenticated": true,
-                    "plan": info.plan.name,
+                    "plan": info.plan_name(),
                     "credits": info.total_credits_left,
                 })),
                 OutputFormat::Table => eprintln!(
                     "Authenticated! Plan: {}, Credits: {}",
-                    info.plan.name, info.total_credits_left
+                    info.plan_name(),
+                    info.total_credits_left
                 ),
             }
         }

@@ -230,7 +230,7 @@ async fn check_api(checks: &mut Vec<DoctorCheck>, state: AuthState, chrome_avail
         Ok(info) => {
             checks.push(DoctorCheck::pass(
                 "studio_api",
-                format!("reachable — plan {}", info.plan.name),
+                format!("reachable — plan {}", info.plan_name()),
             ));
             if info.total_credits_left > 0 {
                 checks.push(DoctorCheck::pass(

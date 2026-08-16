@@ -37,17 +37,13 @@ pub fn billing(info: &BillingInfo) {
         .apply_modifier(UTF8_ROUND_CORNERS)
         .set_header(vec!["Field", "Value"]);
 
-    table.add_row(vec!["Plan", &info.plan.name]);
+    table.add_row(vec!["Plan", &info.plan_name()]);
     table.add_row(vec!["Credits Left", &info.total_credits_left.to_string()]);
     table.add_row(vec![
         "Monthly Usage",
         &format!("{} / {}", info.monthly_usage, info.monthly_limit),
     ]);
     table.add_row(vec!["Active", &info.is_active.to_string()]);
-    table.add_row(vec!["Period", &info.period]);
-    if let Some(ref renew) = info.renews_on {
-        table.add_row(vec!["Renews On", renew]);
-    }
     println!("{table}");
 }
 
