@@ -241,54 +241,71 @@ pub fn extract_browser_auth() -> Result<BrowserAuth, CliError> {
         ".suno.com".into(),
     ];
 
-    for (name, result) in [
+    extract_browser_auth_from([
         ("Chrome", rookie::chrome(Some(domains.clone()))),
         ("Arc", rookie::arc(Some(domains.clone()))),
         ("Brave", rookie::brave(Some(domains.clone()))),
         ("Firefox", rookie::firefox(Some(domains.clone()))),
         ("Edge", rookie::edge(Some(domains.clone()))),
-    ] {
-        if let Ok(cookies) = result {
-            let mut seen = HashSet::new();
-            let mut header_parts = Vec::new();
-            let mut clerk_client_cookie: Option<String> = None;
-            let mut auth_domain_clerk: Option<String> = None;
-            let mut device_id: Option<String> = None;
+    ])
+}
 
-            for cookie in cookies {
-                if !cookie.domain.contains("suno.com") {
-                    continue;
-                }
-                if cookie.name == "__client" && !cookie.value.is_empty() {
-                    if cookie.domain.contains("auth.suno.com") {
-                        auth_domain_clerk = Some(cookie.value.clone());
-                    } else if clerk_client_cookie.is_none() {
-                        clerk_client_cookie = Some(cookie.value.clone());
-                    }
-                }
-                if cookie.name == "ajs_anonymous_id" && device_id.is_none() {
-                    device_id = sanitize_device_id(&cookie.value);
-                }
-                let key = (cookie.name.clone(), cookie.domain.clone());
-                if seen.insert(key) {
-                    header_parts.push(format!("{}={}", cookie.name, cookie.value));
+fn extract_browser_auth_from<'a>(
+    results: impl IntoIterator<Item = (&'a str, rookie::Result<Vec<rookie::enums::Cookie>>)>,
+) -> Result<BrowserAuth, CliError> {
+    let mut diagnostics = Vec::new();
+    for (name, result) in results {
+        let cookies = match result {
+            Ok(cookies) => cookies,
+            Err(error) => {
+                diagnostics.push(format!("{name}: cookie read failed: {error}"));
+                continue;
+            }
+        };
+        let mut seen = HashSet::new();
+        let mut header_parts = Vec::new();
+        let mut clerk_client_cookie: Option<String> = None;
+        let mut auth_domain_clerk: Option<String> = None;
+        let mut device_id: Option<String> = None;
+
+        for cookie in cookies {
+            if !cookie.domain.contains("suno.com") {
+                continue;
+            }
+            if cookie.name == "__client" && !cookie.value.is_empty() {
+                if cookie.domain.contains("auth.suno.com") {
+                    auth_domain_clerk = Some(cookie.value.clone());
+                } else if clerk_client_cookie.is_none() {
+                    clerk_client_cookie = Some(cookie.value.clone());
                 }
             }
-
-            if let Some(clerk_client_cookie) = auth_domain_clerk.or(clerk_client_cookie) {
-                eprintln!("Found Suno session in {name}");
-                return Ok(BrowserAuth {
-                    clerk_client_cookie,
-                    cookie_header: header_parts.join("; "),
-                    device_id,
-                });
+            if cookie.name == "ajs_anonymous_id" && device_id.is_none() {
+                device_id = sanitize_device_id(&cookie.value);
+            }
+            let key = (cookie.name.clone(), cookie.domain.clone());
+            if seen.insert(key) {
+                header_parts.push(format!("{}={}", cookie.name, cookie.value));
             }
         }
+
+        if let Some(clerk_client_cookie) = auth_domain_clerk.or(clerk_client_cookie) {
+            eprintln!("Found Suno session in {name}");
+            return Ok(BrowserAuth {
+                clerk_client_cookie,
+                cookie_header: header_parts.join("; "),
+                device_id,
+            });
+        }
+        diagnostics.push(format!("{name}: no non-empty Suno __client cookie found"));
     }
 
-    Err(CliError::Config(
-        "No Suno session found in any browser. Log into suno.com first, then retry.".into(),
-    ))
+    Err(CliError::Config(format!(
+        "Could not extract a Suno session from any browser.\n{}\n\
+         Cookie read failures do not necessarily mean you are logged out. \
+         Check the browser/profile you use for suno.com and the read errors above, \
+         or use `suno auth --cookie` for manual authentication.",
+        diagnostics.join("\n")
+    )))
 }
 
 /// Exchange the __client cookie for a session ID and JWT via Clerk.
@@ -379,6 +396,56 @@ pub async fn clerk_refresh_jwt(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn browser_auth_reports_read_failures_and_missing_sessions() {
+        let unrelated_cookie = rookie::enums::Cookie {
+            domain: "suno.com".into(),
+            path: "/".into(),
+            secure: true,
+            expires: None,
+            name: "other_cookie".into(),
+            value: "do-not-print-this-value".into(),
+            http_only: true,
+            same_site: 0,
+        };
+        let error = extract_browser_auth_from([
+            (
+                "Chrome",
+                Err(std::io::Error::other("cookie database locked").into()),
+            ),
+            ("Firefox", Ok(vec![unrelated_cookie])),
+        ])
+        .unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains("Chrome: cookie read failed: cookie database locked"));
+        assert!(message.contains("Firefox: no non-empty Suno __client cookie found"));
+        assert!(message.contains("do not necessarily mean you are logged out"));
+        assert!(!message.contains("do-not-print-this-value"));
+        assert_eq!(error.error_code(), "config_error");
+        assert_eq!(error.exit_code(), 2);
+    }
+
+    #[test]
+    fn browser_auth_continues_after_a_read_failure() {
+        let cookie = rookie::enums::Cookie {
+            domain: "auth.suno.com".into(),
+            path: "/".into(),
+            secure: true,
+            expires: None,
+            name: "__client".into(),
+            value: "test-session".into(),
+            http_only: true,
+            same_site: 0,
+        };
+        let auth = extract_browser_auth_from([
+            ("Chrome", Err(std::io::Error::other("access denied").into())),
+            ("Firefox", Ok(vec![cookie])),
+        ])
+        .unwrap();
+        assert_eq!(auth.clerk_client_cookie, "test-session");
+        assert_eq!(auth.cookie_header, "__client=test-session");
+    }
 
     #[test]
     fn normalizes_raw_client_cookie() {
