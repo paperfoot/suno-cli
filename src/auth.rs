@@ -258,7 +258,7 @@ fn extract_browser_auth_from<'a>(
         let cookies = match result {
             Ok(cookies) => cookies,
             Err(error) => {
-                diagnostics.push(format!("{name}: cookie read failed: {error}"));
+                diagnostics.push(format!("{name}: cookie read failed: {error:#}"));
                 continue;
             }
         };
@@ -399,6 +399,8 @@ mod tests {
 
     #[test]
     fn browser_auth_reports_read_failures_and_missing_sessions() {
+        let read_error: rookie::Result<Vec<rookie::enums::Cookie>> =
+            Err(std::io::Error::other("cookie database locked").into());
         let unrelated_cookie = rookie::enums::Cookie {
             domain: "suno.com".into(),
             path: "/".into(),
@@ -412,13 +414,14 @@ mod tests {
         let error = extract_browser_auth_from([
             (
                 "Chrome",
-                Err(std::io::Error::other("cookie database locked").into()),
+                read_error.map_err(|error| error.wrap_err("reading cookie store")),
             ),
             ("Firefox", Ok(vec![unrelated_cookie])),
         ])
         .unwrap_err();
         let message = error.to_string();
-        assert!(message.contains("Chrome: cookie read failed: cookie database locked"));
+        assert!(message.contains("Chrome: cookie read failed: reading cookie store"));
+        assert!(message.contains("cookie database locked"));
         assert!(message.contains("Firefox: no non-empty Suno __client cookie found"));
         assert!(message.contains("do not necessarily mean you are logged out"));
         assert!(!message.contains("do-not-print-this-value"));
