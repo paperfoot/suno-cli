@@ -2,9 +2,8 @@ use serde::{Deserialize, Serialize};
 
 // --- Billing / Account ---
 
-/// Only `total_credits_left` and `plan` are load-bearing (auth verify,
-/// credits display). Everything else defaults so one renamed/removed field
-/// in Suno's billing response doesn't break credits+models+auth at once.
+/// Keep the balance required, but accept both legacy `plan` and the current
+/// `subscription_type` + `plans` catalogue returned by Suno.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct BillingInfo {
     #[serde(default)]
@@ -16,7 +15,12 @@ pub struct BillingInfo {
     pub monthly_limit: u64,
     #[serde(default)]
     pub is_active: bool,
+    #[serde(default)]
     pub plan: Plan,
+    #[serde(default)]
+    pub subscription_type: Option<SubscriptionType>,
+    #[serde(default)]
+    pub plans: Vec<Plan>,
     #[serde(default)]
     pub models: Vec<Model>,
     #[serde(default)]
@@ -31,13 +35,47 @@ pub struct BillingInfo {
     pub download_usage: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 pub struct Plan {
+    #[serde(default)]
     pub name: String,
     #[serde(default)]
     pub plan_key: String,
     #[serde(default)]
     pub usage_plan_features: Vec<Feature>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum SubscriptionType {
+    Free(bool),
+    Plan(String),
+}
+
+impl BillingInfo {
+    pub fn plan_name(&self) -> String {
+        if !self.plan.name.is_empty() {
+            return self.plan.name.clone();
+        }
+        let key = match &self.subscription_type {
+            Some(SubscriptionType::Plan(key)) => key.as_str(),
+            Some(SubscriptionType::Free(false)) => "free",
+            Some(SubscriptionType::Free(true)) => return "Active".to_string(),
+            None if !self.plan.plan_key.is_empty() => return self.plan.plan_key.clone(),
+            None => return "Unknown".to_string(),
+        };
+        self.plans
+            .iter()
+            .find(|plan| plan.plan_key == key && !plan.name.is_empty())
+            .map(|plan| plan.name.clone())
+            .unwrap_or_else(|| {
+                if key == "free" {
+                    "Free".into()
+                } else {
+                    key.into()
+                }
+            })
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -481,12 +519,70 @@ mod tests {
 
     #[test]
     fn billing_info_tolerates_missing_noncritical_fields() {
-        // Only total_credits_left and plan are required.
+        // Legacy payloads remain accepted.
         let r: BillingInfo =
             serde_json::from_str(r#"{"total_credits_left": 500, "plan": {"name": "Premier"}}"#)
                 .unwrap();
         assert_eq!(r.total_credits_left, 500);
         assert_eq!(r.plan.name, "Premier");
         assert!(r.models.is_empty());
+    }
+
+    #[test]
+    fn current_paid_billing_resolves_plan_catalogue() {
+        let info: BillingInfo = serde_json::from_str(
+            r#"{
+            "total_credits_left": 120,
+            "subscription_type": "pro",
+            "plans": [{"plan_key":"free","name":"Free Plan"},
+                      {"plan_key":"pro","name":"Pro Plan"}],
+            "models": [{"name":"v6","external_key":"chirp-hawk","can_use":true}]
+        }"#,
+        )
+        .unwrap();
+        assert_eq!(info.total_credits_left, 120);
+        assert_eq!(info.plan_name(), "Pro Plan");
+        assert_eq!(info.models[0].external_key, "chirp-hawk");
+        assert!(info.models[0].can_use);
+    }
+
+    #[test]
+    fn current_free_billing_does_not_need_legacy_plan() {
+        let info: BillingInfo = serde_json::from_str(
+            r#"{
+            "total_credits_left": 50,
+            "subscription_type": false,
+            "plans": [{"plan_key":"free","name":"Free Plan"}]
+        }"#,
+        )
+        .unwrap();
+        assert_eq!(info.plan_name(), "Free Plan");
+    }
+
+    #[test]
+    fn incomplete_plan_catalogue_preserves_subscription_key() {
+        let info: BillingInfo = serde_json::from_str(
+            r#"{
+            "total_credits_left": 50,
+            "subscription_type": "premier"
+        }"#,
+        )
+        .unwrap();
+        assert_eq!(info.plan_name(), "premier");
+        let info: BillingInfo = serde_json::from_str(r#"{"total_credits_left":0}"#).unwrap();
+        assert_eq!(info.plan_name(), "Unknown");
+    }
+
+    #[test]
+    fn malformed_billing_does_not_synthesize_zero_balance() {
+        assert!(
+            serde_json::from_str::<BillingInfo>(
+                r#"{
+            "subscription_type": false,
+            "plans": []
+        }"#
+            )
+            .is_err()
+        );
     }
 }

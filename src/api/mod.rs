@@ -6,6 +6,7 @@ pub mod delete;
 pub mod downloads;
 pub mod feed;
 pub mod generate;
+pub mod json_response;
 pub mod lyrics;
 pub mod metadata;
 pub mod models;
