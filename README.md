@@ -268,6 +268,23 @@ Auth methods (in order of convenience):
 4. `suno auth --cookie <cookie>` or `suno auth --jwt <token>` — compatible argument forms
 5. `suno auth --refresh` — force a fresh JWT from the stored Clerk session
 
+If browser extraction does not work, `scripts/suno-auth-cookie.sh` prompts for the
+`__client` cookie without echoing it or placing it in shell history or process
+arguments. It passes the value to `suno --no-browser auth --cookie-stdin`.
+Install it as a command available from any directory with:
+
+```bash
+mkdir -p "$HOME/.local/bin"
+install -m 0755 scripts/suno-auth-cookie.sh "$HOME/.local/bin/suno-auth-cookie"
+# Ensure ~/.local/bin is on PATH, then run:
+suno-auth-cookie --check
+suno-auth-cookie
+```
+
+The helper uses `suno` from `PATH` by default. Set `SUNO_BIN=/path/to/suno`
+when you need to select a different build. The cookie is exchanged for a stored
+session; `suno --no-browser credits` then verifies access without creating music.
+
 `suno auth` with no flags checks the existing session, or starts browser login if no auth is configured. `suno auth --logout` removes stored credentials.
 
 ### Generation Parameters

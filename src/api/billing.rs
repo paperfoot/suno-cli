@@ -7,7 +7,7 @@ impl SunoClient {
         self.with_auth_retry(|| async {
             let resp = self.get("/api/billing/info/").send().await?;
             let resp = self.check_response(resp).await?;
-            Ok(resp.json().await?)
+            super::json_response::decode(resp, "Suno billing").await
         })
         .await
     }

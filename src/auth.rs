@@ -20,6 +20,7 @@ pub fn http_client() -> Result<reqwest::Client, CliError> {
     reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(30))
+        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
         .build()
         .map_err(CliError::Http)
 }
@@ -330,7 +331,7 @@ pub async fn clerk_token_exchange(
         });
     }
 
-    let body: serde_json::Value = resp.json().await.map_err(CliError::Http)?;
+    let body: serde_json::Value = crate::api::json_response::decode(resp, "Clerk client").await?;
     let session_id = body
         .get("response")
         .and_then(|r| {
@@ -380,14 +381,14 @@ pub async fn clerk_refresh_jwt(
         });
     }
 
-    let body: serde_json::Value = resp.json().await.map_err(CliError::Http)?;
+    let body: serde_json::Value = crate::api::json_response::decode(resp, "Clerk token").await?;
     body.get("jwt")
         .and_then(|j| j.as_str())
         .map(String::from)
         .ok_or_else(|| CliError::Api {
             code: "no_jwt",
             message:
-                "Clerk returned no JWT — session may have expired, run `suno auth login` again"
+                "Clerk returned no JWT — session may have expired, run `suno auth --login` again"
                     .into(),
         })
 }
