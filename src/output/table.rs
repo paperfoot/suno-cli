@@ -37,7 +37,9 @@ pub fn billing(info: &BillingInfo) {
         .apply_modifier(UTF8_ROUND_CORNERS)
         .set_header(vec!["Field", "Value"]);
 
-    table.add_row(vec!["Plan", &info.plan.name]);
+    if let Some(plan) = &info.plan {
+        table.add_row(vec!["Plan", &plan.name]);
+    }
     table.add_row(vec!["Credits Left", &info.total_credits_left.to_string()]);
     table.add_row(vec![
         "Monthly Usage",

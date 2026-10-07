@@ -140,12 +140,10 @@ fn check_auth(checks: &mut Vec<DoctorCheck>) -> Option<AuthState> {
             return None;
         }
     } else if state.is_jwt_expired() {
-        // is_jwt_expired() fires 30 min early on purpose (Suno's server-side
-        // staleness window) — with a Clerk cookie this self-heals.
         if state.clerk_client_cookie.is_some() {
             checks.push(DoctorCheck::warn(
                 "jwt",
-                "stale (or within Suno's 30-min staleness window) — auto-refreshes via Clerk on next call",
+                "expired - auto-refreshes via Clerk on next call",
                 None,
             ));
         } else {
@@ -230,7 +228,10 @@ async fn check_api(checks: &mut Vec<DoctorCheck>, state: AuthState, chrome_avail
         Ok(info) => {
             checks.push(DoctorCheck::pass(
                 "studio_api",
-                format!("reachable — plan {}", info.plan.name),
+                match &info.plan {
+                    Some(plan) => format!("reachable — plan {}", plan.name),
+                    None => "reachable".into(),
+                },
             ));
             if info.total_credits_left > 0 {
                 checks.push(DoctorCheck::pass(

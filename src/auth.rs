@@ -117,14 +117,9 @@ impl AuthState {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        // Refresh aggressively: any JWT with under 30 minutes of life left.
-        //
-        // Suno issues 1-hour JWTs but their generation endpoint silently
-        // rejects tokens older than ~30 minutes with `Token validation
-        // failed.` even when the JWT's own `exp` claim says it's still
-        // valid (verified 2026-04-07). The 30-minute threshold ensures we
-        // always hand the API a freshly-minted JWT.
-        now + 1800 >= exp
+        // JWT-only headless login has no refresh cookie. Honor the actual
+        // expiry; Suno's earlier rejection is handled by with_auth_retry.
+        now >= exp
     }
 
     fn path() -> PathBuf {
@@ -395,6 +390,49 @@ pub async fn clerk_refresh_jwt(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn jwt_remains_usable_until_its_actual_expiry() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let claims = serde_json::json!({"exp": now + 600});
+        let state = AuthState {
+            jwt: Some(format!(
+                "e30.{}.signature",
+                BASE64URL.encode(claims.to_string())
+            )),
+            ..AuthState::default()
+        };
+        assert!(!state.is_jwt_expired());
+    }
+
+    #[test]
+    fn expired_and_invalid_jwts_remain_unusable() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let claims = serde_json::json!({"exp": now - 60});
+        for jwt in [
+            None,
+            Some("invalid".into()),
+            Some("e30.e30.signature".into()),
+            Some(format!(
+                "e30.{}.signature",
+                BASE64URL.encode(claims.to_string())
+            )),
+        ] {
+            assert!(
+                AuthState {
+                    jwt,
+                    ..AuthState::default()
+                }
+                .is_jwt_expired()
+            );
+        }
+    }
 
     #[test]
     fn normalizes_raw_client_cookie() {

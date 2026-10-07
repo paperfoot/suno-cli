@@ -43,6 +43,10 @@ Live validation on 2026-09-28 completed v6 custom and description generations, e
 
 `GET /api/billing/info/` returns plan information, credits, feature access, generation models, remaster models, and per-model limits. Do not commit account-specific balances because they drift.
 
+Live verified on 2026-10-07: an authenticated account can omit `plan` while returning `total_credits_left`, `models`, and `accessible_features`. The CLI treats `plan` as optional display metadata. Authentication still requires a successful billing response with `total_credits_left`; an absent plan is reported as JSON `null` and omitted from text output.
+
+JWT expiry follows the token's `exp` claim. A token with less than 30 minutes remaining can still pass the authenticated billing request. Server-side rejection remains authoritative and triggers the existing Clerk refresh path when refresh credentials are available.
+
 ### Current generation models
 
 | Display name | External key | Plan access |

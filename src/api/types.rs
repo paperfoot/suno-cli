@@ -2,9 +2,9 @@ use serde::{Deserialize, Serialize};
 
 // --- Billing / Account ---
 
-/// Only `total_credits_left` and `plan` are load-bearing (auth verify,
-/// credits display). Everything else defaults so one renamed/removed field
-/// in Suno's billing response doesn't break credits+models+auth at once.
+/// `total_credits_left` is required for auth verification and credits display.
+/// Suno can omit `plan` on authenticated accounts, so it is optional display
+/// metadata rather than evidence that authentication failed.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct BillingInfo {
     #[serde(default)]
@@ -16,7 +16,7 @@ pub struct BillingInfo {
     pub monthly_limit: u64,
     #[serde(default)]
     pub is_active: bool,
-    pub plan: Plan,
+    pub plan: Option<Plan>,
     #[serde(default)]
     pub models: Vec<Model>,
     #[serde(default)]
@@ -481,12 +481,42 @@ mod tests {
 
     #[test]
     fn billing_info_tolerates_missing_noncritical_fields() {
-        // Only total_credits_left and plan are required.
+        // A supplied plan retains its name; other metadata may be absent.
         let r: BillingInfo =
             serde_json::from_str(r#"{"total_credits_left": 500, "plan": {"name": "Premier"}}"#)
                 .unwrap();
         assert_eq!(r.total_credits_left, 500);
-        assert_eq!(r.plan.name, "Premier");
+        assert_eq!(r.plan.unwrap().name, "Premier");
         assert!(r.models.is_empty());
+    }
+
+    #[test]
+    fn billing_info_accepts_authenticated_accounts_without_a_plan() {
+        // The live billing response omits plan for this account. Null also
+        // expresses absent metadata; neither should block saving a login.
+        for payload in [
+            r#"{"total_credits_left": 300, "is_active": false, "subscription_type": false}"#,
+            r#"{"total_credits_left": 300, "plan": null}"#,
+        ] {
+            let info: BillingInfo = serde_json::from_str(payload).unwrap();
+            assert_eq!(info.total_credits_left, 300);
+            assert!(info.plan.is_none());
+            assert_eq!(
+                serde_json::to_value(&info).unwrap()["plan"],
+                serde_json::Value::Null
+            );
+        }
+    }
+
+    #[test]
+    fn billing_info_still_requires_credits_and_a_valid_supplied_plan() {
+        for payload in [
+            r#"{}"#,
+            r#"{"plan": {"name": "Premier"}}"#,
+            r#"{"total_credits_left": 300, "plan": {}}"#,
+            r#"{"total_credits_left": 300, "plan": "Premier"}"#,
+        ] {
+            assert!(serde_json::from_str::<BillingInfo>(payload).is_err());
+        }
     }
 }
