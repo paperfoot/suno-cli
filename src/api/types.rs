@@ -2,9 +2,8 @@ use serde::{Deserialize, Serialize};
 
 // --- Billing / Account ---
 
-/// Only `total_credits_left` and `plan` are load-bearing (auth verify,
-/// credits display). Everything else defaults so one renamed/removed field
-/// in Suno's billing response doesn't break credits+models+auth at once.
+/// Only `total_credits_left` is required. Plan metadata can use either the
+/// legacy `plan` object or the current `subscription_type` / `plans` catalogue.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct BillingInfo {
     #[serde(default)]
@@ -16,7 +15,12 @@ pub struct BillingInfo {
     pub monthly_limit: u64,
     #[serde(default)]
     pub is_active: bool,
-    pub plan: Plan,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan: Option<Plan>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subscription_type: Option<SubscriptionType>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plans: Vec<Plan>,
     #[serde(default)]
     pub models: Vec<Model>,
     #[serde(default)]
@@ -38,6 +42,34 @@ pub struct Plan {
     pub plan_key: String,
     #[serde(default)]
     pub usage_plan_features: Vec<Feature>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum SubscriptionType {
+    Plan(String),
+    Flag(bool),
+}
+
+impl BillingInfo {
+    pub fn plan_name(&self) -> &str {
+        if let Some(plan) = &self.plan
+            && !plan.name.is_empty()
+        {
+            return &plan.name;
+        }
+
+        let key = match &self.subscription_type {
+            Some(SubscriptionType::Plan(key)) if !key.is_empty() => key.as_str(),
+            Some(SubscriptionType::Flag(false)) => "free",
+            _ => return "Unknown",
+        };
+        self.plans
+            .iter()
+            .find(|plan| plan.plan_key == key && !plan.name.is_empty())
+            .map(|plan| plan.name.as_str())
+            .unwrap_or(if key == "free" { "Free" } else { key })
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -481,12 +513,75 @@ mod tests {
 
     #[test]
     fn billing_info_tolerates_missing_noncritical_fields() {
-        // Only total_credits_left and plan are required.
+        // Existing responses with a nested plan remain supported.
         let r: BillingInfo =
             serde_json::from_str(r#"{"total_credits_left": 500, "plan": {"name": "Premier"}}"#)
                 .unwrap();
         assert_eq!(r.total_credits_left, 500);
-        assert_eq!(r.plan.name, "Premier");
+        assert_eq!(r.plan_name(), "Premier");
         assert!(r.models.is_empty());
+    }
+
+    #[test]
+    fn billing_info_reads_current_free_account_and_models() {
+        let info: BillingInfo = serde_json::from_value(serde_json::json!({
+            "total_credits_left": 100,
+            "subscription_type": false,
+            "plans": [{"plan_key": "free", "name": "Free Plan"}],
+            "models": [{
+                "name": "v6-mini", "external_key": "chirp-goose", "can_use": true
+            }]
+        }))
+        .unwrap();
+        assert_eq!(info.total_credits_left, 100);
+        assert_eq!(info.plan_name(), "Free Plan");
+        assert_eq!(info.models[0].external_key, "chirp-goose");
+        assert!(info.models[0].can_use);
+    }
+
+    #[test]
+    fn billing_info_resolves_current_paid_subscription() {
+        let info: BillingInfo = serde_json::from_value(serde_json::json!({
+            "total_credits_left": 2500,
+            "subscription_type": "pro",
+            "plans": [
+                {"plan_key": "free", "name": "Free Plan"},
+                {"plan_key": "pro", "name": "Pro Plan"}
+            ]
+        }))
+        .unwrap();
+        assert_eq!(info.plan_name(), "Pro Plan");
+        assert_eq!(info.total_credits_left, 2500);
+    }
+
+    #[test]
+    fn billing_info_keeps_unknown_subscription_key_visible() {
+        let info: BillingInfo =
+            serde_json::from_str(r#"{"total_credits_left":50,"subscription_type":"new-tier"}"#)
+                .unwrap();
+        assert_eq!(info.plan_name(), "new-tier");
+    }
+
+    #[test]
+    fn billing_info_does_not_require_or_invent_a_plan() {
+        for metadata in [
+            serde_json::json!({}),
+            serde_json::json!({"subscription_type": true}),
+        ] {
+            let mut value = metadata;
+            value["total_credits_left"] = serde_json::json!(25);
+            let info: BillingInfo = serde_json::from_value(value).unwrap();
+            assert_eq!(info.total_credits_left, 25);
+            assert_eq!(info.plan_name(), "Unknown");
+        }
+        assert!(serde_json::from_str::<BillingInfo>(r#"{"plan":{"name":"Pro"}}"#).is_err());
+    }
+
+    #[test]
+    fn billing_info_identifies_free_without_a_catalogue() {
+        let info: BillingInfo =
+            serde_json::from_str(r#"{"total_credits_left":100,"subscription_type":false}"#)
+                .unwrap();
+        assert_eq!(info.plan_name(), "Free");
     }
 }
