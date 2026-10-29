@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Accept both current `subscription_type` / `plans` billing responses and legacy nested `plan` responses, restoring credits, model discovery, authentication checks, and generation validation when `plan` is absent.
+
 ## v0.10.1 — v6 catalogue, resumable jobs, and signed downloads
 
 - Added Turnstile provider detection, numeric `--token-provider`, and the website's hCaptcha fallback. Captcha calls have absolute deadlines; `--quiet` keeps failures machine-readable.
